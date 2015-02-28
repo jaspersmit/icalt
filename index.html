@@ -1,0 +1,55 @@
+<!DOCTYPE html> 
+<html>
+<head>
+    <title>ICALT</title>
+
+    <script src="js/util.js"></script>
+    <script src="js/icaltCommand.js"></script>
+</head>
+<body>
+
+    <canvas id="stage" width="900" height="700"></canvas>
+
+    <div id="score" onclick="scene.restart()" style="display: none">
+        <div id="scoreround">Je score is: 4</div>
+        <div id="highscore">Highscore: 3</div>
+    </div>
+    <style>
+
+    #score {
+        cursor: pointer;
+        position: absolute;
+        background: green;
+        width: 450px;
+        left: 225px;
+        top: 150px;
+        height: 300px;
+    }
+    #scoreround {
+        text-align: center;
+        margin-top: 100px;
+        font-family: Comic Sans MS;
+        font-size: 14pt;
+        font-weight: bold;
+        color: white;
+    }
+    #highscore {
+        text-align: center;
+        font-family: Comic Sans MS;
+        font-size: 12pt;
+        color: white;
+    }
+    </style>
+
+<script>
+
+    scene = new IcaltCommandScene();
+    window.setInterval( function() {
+        scene.tick();
+        scene.render();
+    }, 20);
+
+
+</script>
+</body>
+</html>
