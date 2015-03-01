@@ -192,6 +192,7 @@ Comet = Class({
     angle: 0,
 
     init: function(x) {
+        this.image = cometImage;
         this.x = x;
         var downSpeed = 3 + 2 * Math.random();
         this.angle = Math.random() * 2 * Math.PI;
@@ -212,8 +213,55 @@ Comet = Class({
         context.save();
         context.translate(this.x, this.y);
         context.rotate(this.angle);
-        context.drawImage(cometImage, -8, -8);
+        context.drawImage(this.image, -8, -8);
         context.restore();
+    }
+});
+
+ufoImage = new Image();
+ufoImage.src = 'images/ufo.png';
+bombImage = new Image();
+bombImage.src = 'images/bomb.png';
+Ufo = Class({ 
+    y: 100,
+    angle: 0,
+    t: 0,
+    extraRange: 500,
+
+    init: function(cometLayer) {
+        this.cometLayer = cometLayer;
+        this.t = Math.PI * 2 * Math.random();
+    },
+
+    tick: function() {
+        this.t += 0.01;
+        if(this.extraRange > 0) { this.extraRange--; }
+        if(Math.random() < 0.003) {
+            this.dropBomb();
+        }
+    },
+
+    render: function(context) {
+        var range = 430 + this.extraRange;
+        this.x = -range * Math.cos(this.t) + 430
+
+        this.y = 100 + 50 * Math.sin(5 * this.t);
+        this.angle = Math.cos(5 * this.t) / 4;
+        context.save();
+        context.translate(this.x, this.y);
+        context.rotate(this.angle);
+        context.drawImage(ufoImage, -47, -22);
+        context.restore();
+    },
+
+    dropBomb: function() {
+        var comet = new Comet();
+        comet.x = this.x;
+        comet.y = this.y;
+        comet.vy = 3;
+        comet.vx = 0;
+        comet.image = bombImage;
+        this.cometLayer.comets.push(comet);
     }
 });
 
@@ -308,12 +356,11 @@ CometLayer = Class({
         this.time++;
         if(this.time > this.spawnTime) {
             this.spawnTime = Math.random() * this.averageSpawnTime / 2 + this.averageSpawnTime / 2;
-            //console.debug(this.averageSpawnTime * 50 / 1000);
             this.time = 0;
-            this.comets.push(new Comet(Math.floor(Math.random() * 900)));
+            //this.comets.push(new Comet(Math.floor(Math.random() * 900)));
         }
         this.difficultyTime++;
-        if(this.difficultyTime > 50) {
+        if(this.difficultyTime > 100) {
             this.difficultyTime = 0;
             this.averageSpawnTime *= 0.99;
         }
@@ -681,9 +728,11 @@ IcaltCommandScene = Class(Scene, {
         this.towns.push(icaltLogo);
         this.scoreBoard = new ScoreBoard(805, 30);
         this.elements.push(this.scoreBoard);
-
         this.gameOverScene = new GameOverScene();
         this.elements.push(this.gameOverScene);
+        this.elements.push(new Ufo(this.cometLayer));
+        this.elements.push(new Ufo(this.cometLayer));
+        this.elements.push(new Ufo(this.cometLayer));
 
         this.bulletLayer.onHit = bind(this.hit, this);
         this.explosionLayer.cometLayer = this.cometLayer;
