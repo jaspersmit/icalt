@@ -155,25 +155,33 @@ IcaltLogo = Class(Entity, {
 
     hit: function() {
         this.scene.loseLife();
-        this.crashSound.play();
+        //this.crashSound.play();
     }
 
 
 });
 
 Sound = Class({
-    init: function(src) {
+    init: function(src, loop) {
         this.src = src;
         this.elem = document.createElement("audio");
         var srcElem = document.createElement("source"); 
         srcElem.setAttribute("src", src)
         srcElem.setAttribute("type", " audio/mp3");
+        if(loop) {
+            this.elem.setAttribute("loop", "loop");
+        }   
+
         this.elem.appendChild(srcElem);
         document.body.appendChild(this.elem);
     },
     play:  function () {
         var audio = this.elem;
         audio.play();
+    },
+    stop: function() {
+       this.elem.pause();
+        this.elem.currentTime = 0; 
     }
 });
 
@@ -185,7 +193,7 @@ Comet = Class({
 
     init: function(x) {
         this.x = x;
-        var downSpeed = 1 + 1 * Math.random();
+        var downSpeed = 3 + 2 * Math.random();
         this.angle = Math.random() * 2 * Math.PI;
         this.vangle = Math.random() * 0.03;
 
@@ -214,7 +222,7 @@ Bullet = Class({
     previousDistance: 1000000,
     hit: false,
     lineLength: 20,
-    bulletSpeed: 8,
+    bulletSpeed: 15,
 
     init: function(originX, originY, targetX, targetY) {
         var angle = Math.atan2(targetY - originY, targetX - originX);
@@ -289,7 +297,7 @@ CometLayer = Class({
     spawnTime: 100,
     comets: [],
     difficultyTime: 0,
-    averageSpawnTime: 8000 / 50,
+    averageSpawnTime: 8000 / 50, 
 
     init: function(scene) {
         this.bleepSound = new Sound('sound/bleep.mp3');
@@ -305,7 +313,7 @@ CometLayer = Class({
             this.comets.push(new Comet(Math.floor(Math.random() * 900)));
         }
         this.difficultyTime++;
-        if(this.difficultyTime > 250) {
+        if(this.difficultyTime > 50) {
             this.difficultyTime = 0;
             this.averageSpawnTime *= 0.99;
         }
@@ -323,6 +331,17 @@ CometLayer = Class({
                 }
             });
          });
+        var aliveComets = [];
+        this.comets.each(function() { 
+            if(this.y >= 0) {
+                aliveComets.push(this);
+            }
+        });
+        this.comets = aliveComets;
+    },
+
+    goNuts: function() {
+        this.averageSpawnTime = 5;
     },
 
     render: function(context) {
@@ -357,7 +376,7 @@ Explosion = Class({
     
     tick: function() {
         if(this.radius > 0) {
-            this.radius += 2;
+            this.radius += 4.5;
         }
         this.cometLayer.explode(this.x, this.y, this.radius);
     },
@@ -367,7 +386,7 @@ Explosion = Class({
         context.beginPath();
         context.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
         context.fill();
-        if(this.radius > 30) { this.radius = 0; }
+        if(this.radius > 45) { this.radius = 0; }
     }
 });
 
@@ -424,7 +443,7 @@ var Town = Class(Entity, {
             this.image = townImage3;
             this.crashSound.play();
         } else if(this.hits == 3) {
-            this.panicSound.play();
+            //this.panicSound.play();
             this.render = function() {};
         }
     }
@@ -484,12 +503,18 @@ ScoreDigit = Class({
         this.targetDigit = 0;
         this.digit = 0;
         this.digitHeight = 20;
-        this.moving = true;
-        this.setDigit(Math.floor(Math.random() * 10));
+        this.moving = false;
     },
 
     setDigit: function(digit) {
+        var oldDist = this.modDist(this.digit, this.targetDigit);
+        var newDist = this.modDist(this.digit, digit);
         this.targetDigit = digit;
+        if(!this.moving) {
+            this.movement = 0;
+        } else {
+            this.movement = this.movement * oldDist / newDist;
+        }
         this.moving = this.digit != this.targetDigit;
     },
 
@@ -497,24 +522,43 @@ ScoreDigit = Class({
         context.font = '30px serif';
         context.fillStyle = 'white';
 
-        var moveY = this.movement * this.digitHeight;
+        var digitDistance = this.modDist(this.digit, this.targetDigit);
+        var digit = (this.movement * digitDistance + this.digit) % 10;
+        var currentDigit = Math.floor(digit);
+        var nextDigit = Math.ceil(digit);
+        var digitMovement = digit - currentDigit;
+        var moveY = digitMovement * this.digitHeight;
         
         if(this.moving) {
-            context.fillText((this.digit + 1) % 10, this.x, this.y - this.digitHeight + moveY);
+            context.fillText(nextDigit, this.x, this.y - this.digitHeight + moveY);
         }
 
-        context.fillText(this.digit, this.x, this.y + moveY);
+        context.fillText(currentDigit, this.x, this.y + moveY);
+    },
+
+    modDist: function(a, b) {
+        return a < b ? (b - a) : b - a + 10;
+    },
+
+    ease: function(t) {
+        if(t < 0.5) {
+            t *= 2;
+            var c = t*t*t*t;
+            return c / 2;
+        } else {
+            t = 2 *t - 2;
+            var c = t*t*t*t;
+            return 1 - c / 2 ;
+        }
     },
 
     tick: function() {
         if(this.moving) {
             this.movement += 0.02;
             if(this.movement >= 1) {
+                this.moving = false;
                 this.movement = 0;
-                this.digit = (this.digit + 1) % 10;
-                if(this.digit == this.targetDigit) {
-                    this.moving = false;
-                }
+                this.digit = this.targetDigit;
             }
         }
     }
@@ -523,7 +567,7 @@ ScoreDigit = Class({
 
 ScoreBoard = Class({
     digits: [],
-    numDigits: 3,
+    numDigits: 5,
 
     init: function(x, y) {
         this.x = x;
@@ -557,6 +601,48 @@ ScoreBoard = Class({
     }
 });
 
+var GameOverScene = Class({
+
+    init: function() {
+        this.gameOverMusic = new Sound('sound/gameover.mp3', true);
+    },
+
+render: function(context) {
+    if(this.gameOver) {
+        var highscore = window.localStorage.getItem("highscore");
+        context.font = '60px sans serif';
+        context.fillStyle = 'white';
+        context.fillText('Game Over!', 250, 300);
+        context.font = '14px sans serif';
+        var gameOverText = 'You made a total of ' + this.score + '  points!';
+        var gameOverText2 = 'Your highscore is ' + highscore;
+        if(this.score >= highscore) {
+            gameOverText2 = 'NEW HIGHSCORE!';
+            window.localStorage.setItem('highscore', this.score);
+        }
+        var gameOverText3 = 'Press F5 to restart the game';
+        context.fillText(gameOverText, 250, 330);
+        context.fillText(gameOverText2, 250, 344);
+        context.fillText(gameOverText3, 250, 358);
+    }
+},
+
+tick: function() {
+
+}, 
+
+setGameOver: function(gameOver, score) {
+    this.score = score;
+    this.gameOver = gameOver;
+    if(this.gameOver) {
+        this.gameOverMusic.play();
+    } else {
+        this.gameOverMusic.stop();
+    }
+}
+
+});
+
 IcaltCommandScene = Class(Scene, {
     stageWidth: 900,
     stageHeight: 700,
@@ -565,10 +651,10 @@ IcaltCommandScene = Class(Scene, {
     value: 3,
     towns: [],
     life: 1,
-    highscore: window.localStorage.getItem("highscore"),
 
     init: function() {
-
+        this.music = new Sound('sound/weekend.mp3', true, 1);
+        this.music.play();
         this.laserSound = new Sound("sound/laser.mp3");
         this.stage = document.getElementById('stage');
         this.offsetLeft = this.stage.offsetLeft;
@@ -593,13 +679,11 @@ IcaltCommandScene = Class(Scene, {
         this.towns.push(town1);
         this.towns.push(town2);
         this.towns.push(icaltLogo);
-        
-
-        //this.elements.push(new ScoreDigit(840, 30));
-        //this.elements.push(new ScoreDigit(858, 30));
-        //this.elements.push(new ScoreDigit(876, 30));
-        this.scoreBoard = new ScoreBoard(840, 30);
+        this.scoreBoard = new ScoreBoard(805, 30);
         this.elements.push(this.scoreBoard);
+
+        this.gameOverScene = new GameOverScene();
+        this.elements.push(this.gameOverScene);
 
         this.bulletLayer.onHit = bind(this.hit, this);
         this.explosionLayer.cometLayer = this.cometLayer;
@@ -623,12 +707,16 @@ IcaltCommandScene = Class(Scene, {
     loseLife: function() {
         this.life--;
         if(this.life == 0) {
-            alert("Game over. Your score is " + this.score);
+            this.music.stop();
+            this.gameOver = true;
+            this.gameOverScene.setGameOver(true, this.score);
+            this.cometLayer.goNuts();
         }
     },
 
     addScore: function(x, y) {
-        var score = this.value;
+        //var score = this.value;
+        var score = this.value * 25;
         this.scoreLayer.addScore(score, x, y);
         this.score += score;
         this.scoreBoard.setScore(this.score);
