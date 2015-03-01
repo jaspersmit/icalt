@@ -214,6 +214,7 @@ Bullet = Class({
     previousDistance: 1000000,
     hit: false,
     lineLength: 20,
+    bulletSpeed: 8,
 
     init: function(originX, originY, targetX, targetY) {
         var angle = Math.atan2(targetY - originY, targetX - originX);
@@ -223,9 +224,8 @@ Bullet = Class({
         this.y = originY + 118 * sin;
         this.x2 = this.x + this.lineLength * cos;
         this.y2 = this.y + this.lineLength * sin;
-        var bulletSpeed = 5;
-        this.vx = bulletSpeed * cos;
-        this.vy = bulletSpeed * sin;
+        this.vx = this.bulletSpeed * cos;
+        this.vy = this.bulletSpeed * sin;
         this.targetX = targetX;
         this.targetY = targetY;
     },
@@ -476,6 +476,87 @@ ScoreLayer = Class({
     }
 });
 
+ScoreDigit = Class({
+    init: function(x, y) {
+        this.x = x;
+        this.y = y;
+        this.movement = 0;
+        this.targetDigit = 0;
+        this.digit = 0;
+        this.digitHeight = 20;
+        this.moving = true;
+        this.setDigit(Math.floor(Math.random() * 10));
+    },
+
+    setDigit: function(digit) {
+        this.targetDigit = digit;
+        this.moving = this.digit != this.targetDigit;
+    },
+
+    render: function(context) {
+        context.font = '30px serif';
+        context.fillStyle = 'white';
+
+        var moveY = this.movement * this.digitHeight;
+        
+        if(this.moving) {
+            context.fillText((this.digit + 1) % 10, this.x, this.y - this.digitHeight + moveY);
+        }
+
+        context.fillText(this.digit, this.x, this.y + moveY);
+    },
+
+    tick: function() {
+        if(this.moving) {
+            this.movement += 0.02;
+            if(this.movement >= 1) {
+                this.movement = 0;
+                this.digit = (this.digit + 1) % 10;
+                if(this.digit == this.targetDigit) {
+                    this.moving = false;
+                }
+            }
+        }
+    }
+});
+
+
+ScoreBoard = Class({
+    digits: [],
+    numDigits: 3,
+
+    init: function(x, y) {
+        this.x = x;
+        this.y = y;
+        for(var i = 0; i < this.numDigits; i++) {
+            this.digits.push(new ScoreDigit(x + 18 * i, y));
+        }
+    },
+
+    setScore: function(score) {
+        for(var i = this.numDigits - 1; i >= 0; i--) {
+            this.digits[i].setDigit(score % 10);
+            score = Math.floor(score / 10);
+        }
+    },
+
+    render: function(context) {
+        context.save();
+        context.rect(this.x, this.y - 30, 18 * this.numDigits, 30);
+        context.clip();
+        this.digits.each(function() {
+            this.render(context);
+        });
+        context.restore();
+    },
+
+    tick: function() {
+        this.digits.each(function() {
+            this.tick();
+        });
+    }
+});
+
 IcaltCommandScene = Class(Scene, {
     stageWidth: 900,
     stageHeight: 700,
@@ -514,6 +595,12 @@ IcaltCommandScene = Class(Scene, {
         this.towns.push(icaltLogo);
         
 
+        //this.elements.push(new ScoreDigit(840, 30));
+        //this.elements.push(new ScoreDigit(858, 30));
+        //this.elements.push(new ScoreDigit(876, 30));
+        this.scoreBoard = new ScoreBoard(840, 30);
+        this.elements.push(this.scoreBoard);
+
         this.bulletLayer.onHit = bind(this.hit, this);
         this.explosionLayer.cometLayer = this.cometLayer;
 
@@ -544,6 +631,7 @@ IcaltCommandScene = Class(Scene, {
         var score = this.value;
         this.scoreLayer.addScore(score, x, y);
         this.score += score;
+        this.scoreBoard.setScore(this.score);
     },
     
     reduceScore: function() {
@@ -553,7 +641,6 @@ IcaltCommandScene = Class(Scene, {
     mousemove: function(e) {
         var x = e.pageX - this.offsetTop;
         var y = e.pageY - this.offsetTop;
-        console.debug(x + ', ', y);
         var angle = Math.atan2(y - 587, x - 432);
         this.telescope.angle = angle;
     },
