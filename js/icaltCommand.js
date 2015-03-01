@@ -11,73 +11,6 @@ Scene = Class({
 
 });
 
-PipeLayer = Class({
-    elements: [],
-    pipeTimer: 100,
-
-    init: function(sectionImage, topImage, bottomImage) {
-        this.sectionImage = sectionImage;
-        this.topImage = topImage;
-        this.bottomImage = bottomImage;
-    },
-
-    render: function(context) {
-        this.elements.each(function() { this.render(context); });
-    },
-
-    tick: function() {
-        this.elements.each(function() { this.tick(); });
-        this.pipeTimer++;
-        if(this.pipeTimer >= 100) {
-            this.pipeTimer = 0;
-            this.createPipes();
-            this.cleanPipes();
-        }
-    },
-
-    createPipes: function() {
-        var height = Math.round(Math.random() * 450 + 100);
-
-        var pipe = new TopPipe(this.bottomImage, this.sectionImage);
-        pipe.height = height;
-        this.elements.push(pipe);
-        
-        var pipe2 = new BottomPipe(this.topImage, this.sectionImage);
-        pipe2.height = height + 157;
-        this.elements.push(pipe2);
-    },
-
-    cleanPipes: function() {
-        var filtered = [];
-        this.elements.each(function() {
-            if(this.x > -70) {
-                filtered.push(this);
-            }
-        });
-        this.elements = filtered;
-    },
-
-    collidesWith: function(x1, y1, x2, y2) {
-        var collides = false;
-        this.elements.each(function() {
-            if(this.collidesWith(x1, y1, x2, y2)) {
-                collides = true;
-            }
-        });
-        return collides;
-    },
-
-    scores: function() {
-        var scores = false;
-        this.elements.each(function() {
-            if(this.x < 80 && !this.passed) {
-                scores = true;
-                this.passed = true;
-            }
-        });
-        return scores;
-    }
-});
 
 Entity = Class({
     init: function(image) {
@@ -700,6 +633,7 @@ IcaltCommandScene = Class(Scene, {
     life: 1,
 
     init: function() {
+        this.director = new Director();
         this.music = new Sound('sound/weekend.mp3', true, 1);
         this.music.play();
         this.laserSound = new Sound("sound/laser.mp3");
@@ -746,6 +680,7 @@ IcaltCommandScene = Class(Scene, {
     },
 
     tick: function() {
+        this.director.tick();
         Scene.prototype.tick.apply(this, arguments);
     },
 
@@ -789,7 +724,22 @@ IcaltCommandScene = Class(Scene, {
         var x = e.pageX - this.offsetTop;
         var y = e.pageY - this.offsetTop;
         this.bulletLayer.addBullet(originX, originY, x, y);
+    }, 
+
+
+
+});
+
+
+var Director = Class({
+    spawnTime: 100,
+    time: 0,
+    tick: function() {
+        this.time++;
+        if(this.time > this.spawnTime) {
+            this.spawnTime = Math.random() * this.averageSpawnTime / 2 + this.averageSpawnTime / 2;
+            this.time = 0;
+            this.scene.elements.push(new Comet(Math.floor(Math.random() * 900)));
+        }
     }
-
-
 });
