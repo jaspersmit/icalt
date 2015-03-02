@@ -6,7 +6,14 @@ Scene = Class({
     },
 
     tick: function() {
-        this.elements.each(function() { if(this.tick) { this.tick(); } });
+        var aliveElements = [];
+        this.elements.each(function() { 
+            if(this.tick) { this.tick(); } 
+        });
+        this.elements.each(function() { 
+            if(!this.deleted) { aliveElements.push(this); } 
+        });
+        this.elements = aliveElements;
     },
 
 });
@@ -21,6 +28,12 @@ Entity = Class({
         context.drawImage(this.image, this.x, this.y);
     }
 });
+
+Stats = {
+    numComets: 0,
+    numUfos: 0
+};
+
 
 
 Sky = Class({
@@ -97,23 +110,32 @@ IcaltLogo = Class(Entity, {
 Sound = Class({
     init: function(src, loop) {
         this.src = src;
-        this.elem = document.createElement("audio");
-        var srcElem = document.createElement("source"); 
-        srcElem.setAttribute("src", src)
-        srcElem.setAttribute("type", " audio/mp3");
-        if(loop) {
-            this.elem.setAttribute("loop", "loop");
-        }   
+        this.loop = loop;
+    },
 
-        this.elem.appendChild(srcElem);
-        document.body.appendChild(this.elem);
+    lateInit: function() {
+        if(!this.initted) {
+            this.initted = true;
+            this.elem = document.createElement("audio");
+            var srcElem = document.createElement("source"); 
+            srcElem.setAttribute("src", this.src)
+            srcElem.setAttribute("type", " audio/mp3");
+            if(this.loop) {
+                this.elem.setAttribute("loop", "loop");
+            }   
+
+            this.elem.appendChild(srcElem);
+            document.body.appendChild(this.elem);
+        }   
     },
     play:  function () {
+        this.lateInit();
         var audio = this.elem;
         audio.play();
     },
     stop: function() {
-       this.elem.pause();
+        this.lateInit();
+        this.elem.pause();
         this.elem.currentTime = 0; 
     }
 });
@@ -123,6 +145,7 @@ cometImage.src = 'images/asteroid.png';
 Comet = Class({
     y: 0,
     angle: 0,
+    size: 1,
 
     init: function(x) {
         this.image = cometImage;
@@ -140,6 +163,14 @@ Comet = Class({
         this.y += this.vy;
         this.x += this.vx;
         this.angle += this.vangle;
+        var comet = this;
+        scene.towns.each(function() {
+            if(this.isHit(comet.x, comet.y)) {
+                this.hit();
+                if(this.hits == 3) { scene.reduceScore(); }
+                comet.deleted = true;
+            }
+        });
     },
 
     render: function(context) {
@@ -148,28 +179,47 @@ Comet = Class({
         context.rotate(this.angle);
         context.drawImage(this.image, -8, -8);
         context.restore();
+    },
+
+    hit: function() {
+        bleepSound.play();
+        scene.addScore(this.x, this.y, 25); 
+        this.deleted = true;
+        Stats.numComets++;
     }
+
 });
 
+var bleepSound = new Sound('sound/bleep.mp3');
 ufoImage = new Image();
 ufoImage.src = 'images/ufo.png';
 bombImage = new Image();
 bombImage.src = 'images/bomb.png';
+
 Ufo = Class({ 
     y: 100,
     angle: 0,
     t: 0,
-    extraRange: 500,
+    extraRange: 1000,
+    hp: 25,
+    size: 45, 
 
-    init: function(cometLayer) {
+    init: function(cometLayer, difficulty) {
         this.cometLayer = cometLayer;
         this.t = Math.PI * 2 * Math.random();
+        var x = -(430 + this.extraRange) * Math.cos(this.t) + 430
+        while(x>=-50 && x < 950) {
+            this.t = Math.PI * 2 * Math.random();
+            x = -(430 + this.extraRange) * Math.cos(this.t) + 430
+        }
+        if(!difficulty) difficulty = 0.003;
+        this.difficulty = difficulty;
     },
 
     tick: function() {
         this.t += 0.01;
         if(this.extraRange > 0) { this.extraRange--; }
-        if(Math.random() < 0.003) {
+        if(Math.random() < this.difficulty) {
             this.dropBomb();
         }
     },
@@ -194,7 +244,16 @@ Ufo = Class({
         comet.vy = 3;
         comet.vx = 0;
         comet.image = bombImage;
-        this.cometLayer.comets.push(comet);
+        this.cometLayer.elements.push(comet);
+    },
+
+    hit: function() {
+        this.hp --;
+        if(this.hp <= 0 && !this.deleted) {
+            this.deleted = true;
+            scene.addScore(this.x, this.y, 150); 
+            Stats.numUfos++;
+        }
     }
 });
 
@@ -281,7 +340,6 @@ CometLayer = Class({
     averageSpawnTime: 8000 / 50, 
 
     init: function(scene) {
-        this.bleepSound = new Sound('sound/bleep.mp3');
         this.scene = scene;
     },
 
@@ -320,45 +378,27 @@ CometLayer = Class({
         this.comets = aliveComets;
     },
 
-    goNuts: function() {
-        this.averageSpawnTime = 5;
-    },
 
     render: function(context) {
         this.comets.each(function() { this.render(context); });
     },
 
-    explode: function(x, y, radius) {
-        var alive = [];
-        var cometLayer = this;
-        this.comets.each(function() {
-            var dx = this.x - x;
-            var dy = this.y - y;
-            if(dx*dx + dy*dy > radius*radius) {
-                alive.push(this);
-            } else {
-                cometLayer.bleepSound.play();
-                cometLayer.scene.addScore(this.x, this.y); 
-            }
-        });
-        this.comets = alive;
-    }
 });
 
 Explosion = Class({
     radius: 1,
 
-    init: function(x, y, cometLayer) {
+    init: function(x, y, scene) {
         this.x = x;
         this.y = y;
-        this.cometLayer = cometLayer;
+        this.scene = scene;
     },
     
     tick: function() {
         if(this.radius > 0) {
             this.radius += 4.5;
         }
-        this.cometLayer.explode(this.x, this.y, this.radius);
+        this.scene.explode(this.x, this.y, this.radius);
     },
 
     render: function(context) {
@@ -366,31 +406,11 @@ Explosion = Class({
         context.beginPath();
         context.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
         context.fill();
-        if(this.radius > 45) { this.radius = 0; }
+        if(this.radius > 45) { this.deleted = true; }
     }
 });
 
-var ExplosionLayer = Class({
-    explosions: [],
-
-    init: function() {
-        this.explosionSound = new Sound('sound/explosion2.mp3');
-    },
-
-    tick: function() {
-        this.explosions.each(function() { this.tick(); });
-    },
-
-    render: function(context) {
-        this.explosions.each(function() { this.render(context); });
-    },
-
-    addExplosion: function(x, y) {
-        this.explosionSound.play();
-        this.explosions.push(new Explosion(x, y, this.cometLayer));
-    }
-});
-
+var explosionSound = new Sound('sound/explosion2.mp3');
 var townImage = new Image();
 townImage.src = 'images/town.png';
 var townImage2 = new Image();
@@ -423,7 +443,7 @@ var Town = Class(Entity, {
             this.image = townImage3;
             this.crashSound.play();
         } else if(this.hits == 3) {
-            //this.panicSound.play();
+            this.panicSound.play();
             this.render = function() {};
         }
     }
@@ -633,7 +653,7 @@ IcaltCommandScene = Class(Scene, {
     life: 1,
 
     init: function() {
-        this.director = new Director();
+        this.director = new Director(this);
         this.music = new Sound('sound/weekend.mp3', true, 1);
         this.music.play();
         this.laserSound = new Sound("sound/laser.mp3");
@@ -649,8 +669,6 @@ IcaltCommandScene = Class(Scene, {
         this.elements.push(icaltLogo);
         this.bulletLayer = new BulletLayer();
         this.elements.push(this.bulletLayer);
-        this.explosionLayer = new ExplosionLayer();
-        this.elements.push(this.explosionLayer);
         this.scoreLayer = new ScoreLayer();
         this.elements.push(this.scoreLayer);
         var town1 = new Town(40, 620);
@@ -664,12 +682,8 @@ IcaltCommandScene = Class(Scene, {
         this.elements.push(this.scoreBoard);
         this.gameOverScene = new GameOverScene();
         this.elements.push(this.gameOverScene);
-        this.elements.push(new Ufo(this.cometLayer));
-        this.elements.push(new Ufo(this.cometLayer));
-        this.elements.push(new Ufo(this.cometLayer));
 
         this.bulletLayer.onHit = bind(this.hit, this);
-        this.explosionLayer.cometLayer = this.cometLayer;
 
         this.stage.addEventListener("click", bind(this.click, this));
         this.stage.addEventListener('mousemove', bind(this.mousemove, this));
@@ -685,7 +699,22 @@ IcaltCommandScene = Class(Scene, {
     },
 
     hit: function(x, y) {
-        this.explosionLayer.addExplosion(x, y);
+        explosionSound.play();
+        this.elements.push(new Explosion(x, y, this));
+    },
+
+    explode: function(x, y, radius) {
+        var alive = [];
+        var scene = this;
+        this.elements.each(function() {
+            var dx = this.x - x;
+            var dy = this.y - y;
+            if(dx*dx + dy*dy <= radius*radius + this.size *this.size  && this.hit) {
+                bleepSound.play();
+                this.hit();
+            }
+        });
+        this.comets = alive;
     },
 
     loseLife: function() {
@@ -694,13 +723,13 @@ IcaltCommandScene = Class(Scene, {
             this.music.stop();
             this.gameOver = true;
             this.gameOverScene.setGameOver(true, this.score);
-            this.cometLayer.goNuts();
+            scene.goNuts();
         }
     },
 
-    addScore: function(x, y) {
+    addScore: function(x, y, score) {
         //var score = this.value;
-        var score = this.value * 25;
+        var score = this.value * score;
         this.scoreLayer.addScore(score, x, y);
         this.score += score;
         this.scoreBoard.setScore(this.score);
@@ -718,28 +747,105 @@ IcaltCommandScene = Class(Scene, {
     },
 
     click: function(e) {
-        this.laserSound.play();
-        var originX = 432;
-        var originY = 576;
-        var x = e.pageX - this.offsetTop;
-        var y = e.pageY - this.offsetTop;
-        this.bulletLayer.addBullet(originX, originY, x, y);
+        if(!this.gameOver) {
+            this.laserSound.play();
+            var originX = 432;
+            var originY = 576;
+            var x = e.pageX - this.offsetTop;
+            var y = e.pageY - this.offsetTop;
+            this.bulletLayer.addBullet(originX, originY, x, y);
+        }
     }, 
 
-
-
+    goNuts: function() {
+        this.director.goNuts();
+    }
 });
 
 
 var Director = Class({
-    spawnTime: 100,
+    spawnTime: 200,
     time: 0,
+    averageSpawnTime: 100, 
+    currentLevel: 0,
+    ticks: 0,
+    
+    init: function(scene) { 
+        this.scene = scene;
+    },
+
     tick: function() {
         this.time++;
+        this.ticks++;
+        
+        if(this.conditions[this.currentLevel].apply(this)) {
+            this.currentLevel++;
+            this.levels[this.currentLevel].apply(this);
+        }
+        
         if(this.time > this.spawnTime) {
             this.spawnTime = Math.random() * this.averageSpawnTime / 2 + this.averageSpawnTime / 2;
             this.time = 0;
             this.scene.elements.push(new Comet(Math.floor(Math.random() * 900)));
         }
-    }
+    },
+
+    goNuts: function() {
+        //this.averageSpawnTime = 10;
+        //this.scene.elements.push(new Ufo(this.scene));
+        //this.scene.elements.push(new Ufo(this.scene));
+        //this.scene.elements.push(new Ufo(this.scene));
+    },
+
+    spawnUfo: function(difficulty) {
+        this.scene.elements.push(new Ufo(this.scene, difficulty));
+    },
+
+    levels: [
+        function() {
+            this.averageSpawnTime = 100;
+        }, function() {
+            this.spawnUfo(0.003);
+        }, function() {
+            Stats.numComets = 0;
+            this.averageSpawnTime = 65;
+        }, function() {
+            this.averageSpawnTime = 100000;
+            this.spawnUfo(0.005);
+            this.spawnUfo(0.005);
+            this.spawnUfo(0.005);
+        }, function() {
+            this.ticks = 0;
+            this.averageSpawnTime = 50;
+            this.spawnTime = 200;
+        }, function() {
+            Stats.numUfos = 0;
+            Stats.numComets = 0;
+            this.averageSpawnTime = 65;
+            this.spawnUfo(0.005);
+        }, function() {
+            this.spawnUfo(0.003);
+            this.spawnUfo(0.003);
+        }
+    ],
+
+    conditions: [
+        function() {
+            return Stats.numComets >= 12;
+        }, function() {
+            return Stats.numUfos >= 1;
+        }, function() {
+            return Stats.numComets >= 15;
+        }, function() {
+            return Stats.numUfos >= 4;
+        }, function() {
+            return this.ticks > 2000;
+        }, function() {
+            return Stats.numUfos >= 1 && Stats.numComets >= 40;
+        }, function() {
+            return Stats.numUfos >= 3;
+        }, function() {
+            return Stats.numUfos >= 10;
+        } ]
+
 });
